@@ -14,7 +14,7 @@ from io import StringIO
 from sklearn.model_selection import train_test_split,ParameterGrid,ParameterSampler
 from sklearn.metrics import precision_score,recall_score,f1_score,accuracy_score,roc_auc_score
 
-
+###################
 # Utility
 ###################
 
@@ -25,7 +25,6 @@ def Perturb(inmat,pfact=.1):
 
     stds=np.std(inmat)
     return inmat+np.array([pl.normal(0,tmp*pfact,inmat.shape[0]) for tmp in stds]).T
-
 
 def ProcRunfile(runfile='run1.txt'):
 
@@ -39,7 +38,15 @@ def ProcRunfile(runfile='run1.txt'):
 
     return df
 
-
+def TwoLargest(invec):
+    try:
+        largest=np.max(invec)
+        second=max((tmp for tmp in invec if tmp!=largest))
+        return second,largest
+    except:
+        return 1.,0.
+    
+####################
 # Main body
 ####################
 
@@ -283,7 +290,84 @@ def TestPrediction(dff,dffoh,targets,params,numDisp=100):
 
 
 
+###########################################################
+# Feature Extraction
+###########################################################
 
-###########################################################
-# Feature Extraction Stuff
-###########################################################
+def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1):
+
+    if type(brands)==int:
+        brands=dfinputs.brand.unique()
+    if type(categories)==int:
+        categories=dfinputs.category.unique()
+
+    brandEnc=LabelEncoder().fit(brands)
+    catEnc=LabelEncoder().fit(categories)
+
+    # Categorical features
+    dfinputsonehot=pd.DataFrame(dfinputs[['customer_id','timestamp']])
+    brandLabel=brandEnc.transform(dfinputs.brand)
+    catLabel=catEnc.transform(dfinputs.category)
+
+    # Generating one hot encoding matrices
+    brandOHenc=pd.DataFrame(OneHotEncoder().fit_transform(brandLabel.reshape((-1,1))).toarray())
+    brandOHenc.columns=['brand'+str(tmp) for tmp in range(len(brandOHenc.columns))]
+    brandOHenc.index=dfinputsonehot.index
+    
+    catOHenc=pd.DataFrame(OneHotEncoder().fit_transform(catLabel.reshape((-1,1))).toarray())
+    catOHenc.columns=['categ'+str(tmp) for tmp in range(len(catOHenc.columns))]
+    catOHenc.index=dfinputsonehot.index
+    
+    # Forming one hot feature matrix
+    dfinputsonehot=pd.concat((dfinputsonehot,brandOHenc,catOHenc),axis=1)
+    dfinputsonehot.sort_values('timestamp',inplace=True,ascending=False)
+    
+
+    # Getting features
+    dgoh=dfinputsonehot.groupby('customer_id')
+    
+    # Distribution over brands   
+    dffoh=dgoh[[tmp for tmp in dfinputsonehot.columns if 'brand' in tmp]].sum()
+    dffoh=dffoh.divide(dffoh.sum(axis=1),axis=0)
+    
+    # Distribution over categories
+    tmpoh=dgoh[[tmp for tmp in dfinputsonehot.columns if 'categ' in tmp]].sum()
+    tmpoh=tmpoh.divide(tmpoh.sum(axis=1),axis=0)
+    dffoh=pd.concat((dffoh,tmpoh),axis=1)
+
+    return dffoh
+
+def ExtractNumericalFeatures(dfinputs,verbose=True):
+  
+    dg=dfinputs.groupby('customer_id')
+    
+    # Creating the initial dataframe   
+    #timemax=df.timestamp.max()-predWind
+    timemax=dfinputs.timestamp.max()+10
+    dff=pd.DataFrame(dg.timestamp.apply(lambda tmp:tmp.max()-tmp.min()))
+    dff.columns=['timespan']
+
+    # Feature extraction
+   
+    if verbose: print("Extracting first three.. ")
+    dff['num_orders']=dg.order_id.nunique()
+    dff['total_quantity']=dg.quantity.sum()
+    dff['order_density']=dff.num_orders/(dff.timespan+.5)
+    
+    if verbose: print("Next bunch..")
+    dff['recency']=timemax-dg.timestamp.max()
+    dff['delta_t']=dg.timestamp.apply(lambda tmp:np.diff(TwoLargest(tmp))[0])
+    dff['mean_delta']=(dg.timestamp.apply(lambda tmp:np.diff(tmp).mean())).fillna(-1)
+    dff['n_unique_products']=dg.product_id.nunique()
+    dff['n_brands']=dg.brand.nunique()
+    
+    if verbose: print("And next three...")
+    dff['mean_order']=dg.order_line_total.mean()
+    dff['total_order']=dg.order_line_total.sum()
+    dff['n_unique_categories']=dg.category.nunique()
+    
+    if verbose: print("'Missing feature' features")
+    dff['nodelta']=[int(tmp) for tmp in dff.delta_t==-1]
+    dff['nomeandelta']=[int(tmp) for tmp in dff.mean_delta<=0]
+    
+    return dff
