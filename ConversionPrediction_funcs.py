@@ -132,8 +132,8 @@ def CreateNetwork(dff,dffoh,params):
     nCategories=len([tmp for tmp in dffoh.columns if re.compile("categ\d").search(tmp)])
     
     # Onehot inputs
-    xboh=tf.placeholder(tf.float32,(None,nBrands),name='xboh')
-    xcoh=tf.placeholder(tf.float32,(None,nCategories),name='xcoh')
+    xboh=tf.placeholder(tf.float32,(None,nBrands),name='xboh')  # Brand one-hot
+    xcoh=tf.placeholder(tf.float32,(None,nCategories),name='xcoh') # Category one-hot
 
     brandEmbeddings=tf.Variable(tf.truncated_normal((nBrands,brandEmbeddim),stddev=.1))
     catEmbeddings=tf.Variable(tf.truncated_normal((nCategories,catEmbeddim),stddev=.1))
@@ -174,7 +174,7 @@ def CreateNetwork(dff,dffoh,params):
 
 
 
-def TestPrediction(dff,dffoh,targets,params,numDisp=100):
+def TrainTestNetwork(dff,dffoh,targets,params,numDisp=100,savePath=''):
     '''
     Tests features dff, dffoh for the parameter set in params
     '''
@@ -275,7 +275,11 @@ def TestPrediction(dff,dffoh,targets,params,numDisp=100):
 
         #beds=sess.run(brandEmbeddings)
         #ceds=sess.run(catEmbeddings)
-    
+
+        if savePath!='':
+            saver=tf.train.Saver()
+            saver.save(sess,savePath);
+        
         sess.close()
         
     scoresdf=pd.DataFrame([precisions,recalls,accuracies,f1s,aucs])
@@ -287,7 +291,34 @@ def TestPrediction(dff,dffoh,targets,params,numDisp=100):
     return scoresdf
 
 
+TestPrediction=TrainTestNetwork
 
+def MakePrediction(loadPath,dff,dffoh):
+
+    # Loading in the graph
+    sess=tf.Session()
+    loader=tf.train.import_meta_graph(savePath+'.meta')
+    loader.restore(sess,tf.train.latest_checkpoint('.'))
+
+    # Loading in the nodes
+    x=sess.graph.get_tensor_by_name('x:0')
+    xcoh=sess.graph.get_tensor_by_name('xcoh:0')
+    xboh=sess.graph.get_tensor_by_name('xboh:0')
+    ypred=sess.graph.get_tensor_by_name('ypred:0')
+    
+    # Creating input vectors
+    brandcols=[tmp for tmp in dffoh.columns if 'brand' in tmp]
+    catcols=[tmp for tmp in dffoh.columns if 'categ' in tmp]
+    xboh=dffoh[brandcols]
+    xcoh=dffoh[catcols]
+        
+    # Predicting
+    fd={x:dff,xboh:xboh,xcoh:xcoh}
+    yproba=sess.run(ypred,feed_dict=fd)  #,feed_dict={x:xtest,y:ytest.reshape((-1,1))})
+    ypredicted=np.array(yproba>.5,dtype=int)
+    sess.close()
+
+    return ypredicted
 
 
 ###########################################################
@@ -371,3 +402,4 @@ def ExtractNumericalFeatures(dfinputs,verbose=True):
     dff['nomeandelta']=[int(tmp) for tmp in dff.mean_delta<=0]
     
     return dff
+
