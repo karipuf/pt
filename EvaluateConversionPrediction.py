@@ -30,7 +30,6 @@ pgrid=ParameterSampler(param_grid,100)
 ######################
 for params in pgrid:
 
-    CreateNetwork(dff,dffoh,params)
     scoresdf=TestPrediction(dff,dffoh,targets,params,numDisp=300)
     
     open("home_run1.txt","a").write(str(params)+'\n')

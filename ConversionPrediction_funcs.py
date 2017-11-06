@@ -117,6 +117,8 @@ def CreateNetwork(dff,dffoh,params):
     '''
     Sets up tensorflow network required to
     perform conversion prediction
+
+    Is normally only called from within TrainTestNetwork
     '''
     
     # nHid1=20,nHid2=-1,brandEmbeddim=3,catEmbeddim=3,dropoutRate=.5,lr1=.01,lr2=.001,lr3=.0005):
@@ -193,6 +195,9 @@ def TrainTestNetwork(dff,dffoh,targets,params,numDisp=100,savePath=''):
     '''
     Tests features dff, dffoh for the parameter set in params
     '''
+
+    CreateNetwork(dff,dffoh,params)
+
     
     num_splits=params['num_splits']
     num_augment=params['num_augment']
@@ -273,11 +278,14 @@ def TrainTestNetwork(dff,dffoh,targets,params,numDisp=100,savePath=''):
                 print("Iteration #"+str(count)+": error "+str(sess.run(loss,feed_dict=fd)))
                 #print("embedvec row 1: "+str(sess.run(brandEmbeddings)[0,:]))
         
-                            
+
+        if savePath!='':
+            saver=tf.train.Saver()
+            saver.save(sess,savePath);
     
         # Prediction
         ################
-            
+
         fd={x:xtest,y:ytest.reshape((-1,1)),xboh:xbohtest,xcoh:xcohtest}
         yproba=sess.run(ypred,feed_dict=fd)  #,feed_dict={x:xtest,y:ytest.reshape((-1,1))})
         ypredicted=np.array(yproba>.5,dtype=int)
@@ -290,10 +298,6 @@ def TrainTestNetwork(dff,dffoh,targets,params,numDisp=100,savePath=''):
 
         #beds=sess.run(brandEmbeddings)
         #ceds=sess.run(catEmbeddings)
-
-        if savePath!='':
-            saver=tf.train.Saver()
-            saver.save(sess,savePath);
         
         sess.close()
         
@@ -308,30 +312,31 @@ def TrainTestNetwork(dff,dffoh,targets,params,numDisp=100,savePath=''):
 
 TestPrediction=TrainTestNetwork
 
-def MakePrediction(loadPath,dff,dffoh):
+def MakePrediction(dff,dffoh,loadPath='',session=''):
 
     # Loading in the graph
-    sess=tf.Session()
-    loader=tf.train.import_meta_graph(savePath+'.meta')
-    loader.restore(sess,tf.train.latest_checkpoint('.'))
+    with tf.Session() as sess:
 
-    # Loading in the nodes
-    x=sess.graph.get_tensor_by_name('x:0')
-    xcoh=sess.graph.get_tensor_by_name('xcoh:0')
-    xboh=sess.graph.get_tensor_by_name('xboh:0')
-    ypred=sess.graph.get_tensor_by_name('ypred:0')
+        loader=tf.train.import_meta_graph(loadPath+'.meta')
+        loader.restore(sess,loadPath)
+
+        # Loading in the nodes
+        x=sess.graph.get_tensor_by_name('x:0')
+        xcoh=sess.graph.get_tensor_by_name('xcoh:0')
+        xboh=sess.graph.get_tensor_by_name('xboh:0')
+        ypred=sess.graph.get_tensor_by_name('ypred:0')
     
-    # Creating input vectors
-    brandcols=[tmp for tmp in dffoh.columns if 'brand' in tmp]
-    catcols=[tmp for tmp in dffoh.columns if 'categ' in tmp]
-    xboh=dffoh[brandcols]
-    xcoh=dffoh[catcols]
+        # Creating input vectors
+        brandcols=[tmp for tmp in dffoh.columns if 'brand' in tmp]
+        catcols=[tmp for tmp in dffoh.columns if 'categ' in tmp]
+        dffboh=dffoh[brandcols]
+        dffcoh=dffoh[catcols]
         
-    # Predicting
-    fd={x:dff,xboh:xboh,xcoh:xcoh}
-    yproba=sess.run(ypred,feed_dict=fd)  #,feed_dict={x:xtest,y:ytest.reshape((-1,1))})
-    ypredicted=np.array(yproba>.5,dtype=int)
-    sess.close()
+        # Predicting
+        fd={x:dff,xboh:dffboh,xcoh:dffcoh}
+        yproba=sess.run(ypred,feed_dict=fd)  #,feed_dict={x:xtest,y:ytest.reshape((-1,1))})
+        ypredicted=np.array(yproba>.5,dtype=int)
+        sess.close()
 
     return ypredicted
 
