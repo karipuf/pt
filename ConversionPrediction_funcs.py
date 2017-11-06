@@ -14,8 +14,21 @@ from io import StringIO
 from sklearn.model_selection import train_test_split,ParameterGrid,ParameterSampler
 from sklearn.metrics import precision_score,recall_score,f1_score,accuracy_score,roc_auc_score
 
+
 ###################
+#
+# Constants
+#
+###################
+
+# Minimum and maximum timestamps from the sales_order_line file
+minTimeStamp=24720480.0
+maxTimeStamp=24986880.0
+
+###################
+#
 # Utility
+#
 ###################
 
 def Perturb(inmat,pfact=.1):
@@ -47,21 +60,23 @@ def TwoLargest(invec):
         return 1.,0.
     
 ####################
+#
 # Main body
+#
 ####################
 
 def LoadFeatures(numFeatsFile="sales_order_line_features_v2.csv",catFeatsFile="sales_order_line_ohfeatures.csv",nDays=30,nDaysFeats=75):
+    
     '''
-    Loads in features and does some basic pre-processing
+    Loads in features and does some basic pre-processing in
+    preparation for training (for e.g. to generate the targets)
 
     Note: if changing the windows used to generate features (the nDays and nDaysFeat parameters)
     Need to regenerate features -> run latest ConversionPrediction-v<x>_feature_extraction script
     which will produce the two files numFeatsFile and catFeatsFile
-    
+
     '''
 
-    nDays=30
-    nDaysFeats=75
     predWind=nDays*24*60
     featsWind=nDaysFeats*24*60
 
@@ -322,11 +337,17 @@ def MakePrediction(loadPath,dff,dffoh):
 
 
 ###########################################################
+#
 # Feature Extraction
+#
 ###########################################################
 
 def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1):
 
+    if 'timestamp' not in dfinputs.columns:
+        dfinputs['timestamp']=dfinputs.transaction_date.apply(lambda tmp:arrow.get(tmp).timestamp/(60))
+        dfinputs.timestamp=df.timestamp-minTimeStamp
+    
     if type(brands)==int:
         brands=dfinputs.brand.unique()
     if type(categories)==int:
@@ -341,6 +362,7 @@ def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1):
     catLabel=catEnc.transform(dfinputs.category)
 
     # Generating one hot encoding matrices
+    # Have to unify the indices so that the three can be concatenated
     brandOHenc=pd.DataFrame(OneHotEncoder().fit_transform(brandLabel.reshape((-1,1))).toarray())
     brandOHenc.columns=['brand'+str(tmp) for tmp in range(len(brandOHenc.columns))]
     brandOHenc.index=dfinputsonehot.index
@@ -368,13 +390,26 @@ def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1):
 
     return dffoh
 
-def ExtractNumericalFeatures(dfinputs,verbose=True):
-  
+def ExtractNumericalFeatures(dfinputs,verbose=True,timeStamp=-1,trainingSet=False):
+
+    if 'timestamp' not in dfinputs.columns:
+        dfinputs['timestamp']=dfinputs.transaction_date.apply(lambda tmp:arrow.get(tmp).timestamp/(60))
+        dfinputs.timestamp=df.timestamp-minTimeStamp
+    
     dg=dfinputs.groupby('customer_id')
     
     # Creating the initial dataframe   
     #timemax=df.timestamp.max()-predWind
-    timemax=dfinputs.timestamp.max()+10
+
+    # The "current" point in time
+    # If not provided, then use present moment (computer time)
+    # If training then assume we are using the full dataset (i.e. for training)
+    # in which case use the maximum value as the input
+
+    if trainingSet: timeStamp=dfinputs.timestamp.max()+10
+    else:
+        if timeStamp==-1: timeStamp=arrow().timestamp+0.
+    
     dff=pd.DataFrame(dg.timestamp.apply(lambda tmp:tmp.max()-tmp.min()))
     dff.columns=['timespan']
 
@@ -386,7 +421,7 @@ def ExtractNumericalFeatures(dfinputs,verbose=True):
     dff['order_density']=dff.num_orders/(dff.timespan+.5)
     
     if verbose: print("Next bunch..")
-    dff['recency']=timemax-dg.timestamp.max()
+    dff['recency']=timeStamp-dg.timestamp.max()
     dff['delta_t']=dg.timestamp.apply(lambda tmp:np.diff(TwoLargest(tmp))[0])
     dff['mean_delta']=(dg.timestamp.apply(lambda tmp:np.diff(tmp).mean())).fillna(-1)
     dff['n_unique_products']=dg.product_id.nunique()
@@ -403,3 +438,50 @@ def ExtractNumericalFeatures(dfinputs,verbose=True):
     
     return dff
 
+
+
+###########################################################################
+#
+# For regenerating the original features from the sales_order_line dataset
+# Useful for testing the extraction functions!
+#
+###########################################################################
+
+def regenerateNumericalFeatures(nDays=30,nDaysFeats=75,returnOutputs=False):
+    # Generates the data that is stored
+    
+    predWind=nDays*24*60
+    featsWind=nDaysFeats*24*60
+    
+    df=pd.read_csv("sales_order_line_timestamped.csv")
+    thres=df.timestamp.max()-predWind
+    thres0=thres-featsWind
+    dfinputs=df[(df.timestamp<thres) & (df.timestamp>thres0)]
+    numFeatures=ExtractNumericalFeatures(dfinputs,trainingSet=True)
+    
+    if returnOutputs:
+        dfoutputs=df[df.timestamp>thres]
+        converted=set(dfoutputs.customer_id.unique())
+        targets=np.array([int(tmp in converted) for tmp in numFeatures.index])
+        return numFeatures,targets
+    else:
+        return numFeatures
+
+def regenerateCategoricalFeatures(nDays=30,nDaysFeats=75,returnOutputs=False):
+    
+    predWind=nDays*24*60
+    featsWind=nDaysFeats*24*60
+    
+    df=pd.read_csv("sales_order_line_timestamped.csv")
+    thres=df.timestamp.max()-predWind
+    thres0=thres-featsWind
+    dfinputs=df[(df.timestamp<thres) & (df.timestamp>thres0)]
+    catFeatures=ExtractCategoricalFeatures(dfinputs)
+    
+    if returnOutputs:
+        dfoutputs=df[df.timestamp>thres]
+        converted=set(dfoutputs.customer_id.unique())
+        targets=np.array([int(tmp in converted) for tmp in catFeatures.index])
+        return catFeatures,targets
+    else:
+        return catFeatures
