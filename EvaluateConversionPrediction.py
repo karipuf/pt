@@ -22,7 +22,7 @@ param_grid={
     'testSize':[.1],
     'dropoutRate':[.3,.5,.7]
 }
-pgrid=ParameterSampler(param_grid,100)
+pgrid=ParameterSampler(param_grid,30)
 
 
 
@@ -32,5 +32,5 @@ for params in pgrid:
 
     scoresdf=TestPrediction(dff,dffoh,targets,params,numDisp=300)
     
-    open("home_run1.txt","a").write(str(params)+'\n')
-    open("home_run1.txt","a").write(scoresdf.to_string()+'\n')
+    open("office_run1.txt","a").write(str(params)+'\n')
+    open("office_run1.txt","a").write(scoresdf.to_string()+'\n')

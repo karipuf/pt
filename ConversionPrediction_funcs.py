@@ -25,6 +25,7 @@ from sklearn.metrics import precision_score,recall_score,f1_score,accuracy_score
 #minTimeStamp=24720480.0
 #maxTimeStamp=24986880.0
 
+
 ###################
 #
 # Utility
@@ -65,7 +66,7 @@ def TwoLargest(invec):
 #
 ####################
 
-def LoadFeatures(numFeatsFile="sales_order_line_features_v3.csv",catFeatsFile="sales_order_line_ohfeatures_v2.csv",nDays=30,nDaysFeats=75):
+def LoadFeatures(numFeatsFile="sales_order_line_features_v3.csv",catFeatsFile="sales_order_line_ohfeatures_v2.csv",nDays=30,nDaysFeats=75,returnBrandsCategories=False):
     
     '''
     Loads in features and does some basic pre-processing in
@@ -109,8 +110,10 @@ def LoadFeatures(numFeatsFile="sales_order_line_features_v3.csv",catFeatsFile="s
     targets=np.array([int(tmp in converted) for tmp in dff.index])
 
 
-    #return dff,dffoh,targets,brands,categories
-    return dff,dffoh,targets
+    if returnBrandsCategories:
+        return dff,dffoh,targets,brands,categories
+    else:
+        return dff,dffoh,targets
 
 
 def CreateNetwork(dff,dffoh,params):
@@ -309,7 +312,7 @@ def TrainTestNetwork(dff,dffoh,targets,params,numDisp=100,savePath=''):
     
     return scoresdf
 
-
+# Legacy stuff
 TestPrediction=TrainTestNetwork
 
 def MakePrediction(dff,dffoh,loadPath='',session='',probThres=.5):
@@ -347,15 +350,26 @@ def MakePrediction(dff,dffoh,loadPath='',session='',probThres=.5):
 #
 ###########################################################
 
-def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1):
+def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1,timeStamp=-1,trainingSet=False,nDaysFeats=75):
 
     if 'timestamp' not in dfinputs.columns:
         dfinputs['timestamp']=dfinputs.transaction_date.apply(lambda tmp:arrow.get(tmp).timestamp/(60))
+    # Creating the initial dataframe   
+
+    # The "current" point in time
+    # If not provided, then use present moment (computer time)
+    # If training then assume we are using the full dataset (i.e. for training)
+    # in which case use the maximum value as the input
+    if trainingSet: timeStamp=dfinputs.timestamp.max()+10
+    else:
+        if timeStamp==-1: timeStamp=arrow.get().timestamp/60.+10
+    featsWind=nDaysFeats*24*60
+    dfinputs=dfinputs[dfinputs.timestamp>timeStamp-featsWind]
     
     if type(brands)==int:
-        brands=dfinputs.brand.unique()
+        brands,foo=pickle.load(open("brandscats.pkl",'rb'))
     if type(categories)==int:
-        categories=dfinputs.category.unique()
+        foo,categories=pickle.load(open("brandscats.pkl",'rb'))
 
     brandEnc=LabelEncoder().fit(brands)
     catEnc=LabelEncoder().fit(categories)
@@ -394,13 +408,11 @@ def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1):
 
     return dffoh
 
-def ExtractNumericalFeatures(dfinputs,verbose=True,timeStamp=-1,trainingSet=False):
+def ExtractNumericalFeatures(dfinputs,verbose=True,timeStamp=-1,trainingSet=False,nDaysFeats=75):
 
     if 'timestamp' not in dfinputs.columns:
         dfinputs['timestamp']=dfinputs.transaction_date.apply(lambda tmp:arrow.get(tmp).timestamp/(60))
-    
-    dg=dfinputs.groupby('customer_id')
-    
+  
     # Creating the initial dataframe   
 
     # The "current" point in time
@@ -410,7 +422,10 @@ def ExtractNumericalFeatures(dfinputs,verbose=True,timeStamp=-1,trainingSet=Fals
     if trainingSet: timeStamp=dfinputs.timestamp.max()+10
     else:
         if timeStamp==-1: timeStamp=arrow.get().timestamp/60.+10
-    
+    featsWind=nDaysFeats*24*60
+    dfinputs=dfinputs[dfinputs.timestamp>timeStamp-featsWind]        
+
+    dg=dfinputs.groupby('customer_id')
     dff=pd.DataFrame(dg.timestamp.apply(lambda tmp:tmp.max()-tmp.min()))
     dff.columns=['timespan']
 
@@ -477,7 +492,7 @@ def regenerateCategoricalFeatures(nDays=30,nDaysFeats=75,returnOutputs=False):
     thres=df.timestamp.max()-predWind
     thres0=thres-featsWind
     dfinputs=df[(df.timestamp<thres) & (df.timestamp>thres0)]
-    catFeatures=ExtractCategoricalFeatures(dfinputs)
+    catFeatures=ExtractCategoricalFeatures(dfinputs,trainingSet=True)
     
     if returnOutputs:
         dfoutputs=df[df.timestamp>thres]
@@ -495,20 +510,20 @@ def regenerateCategoricalFeatures(nDays=30,nDaysFeats=75,returnOutputs=False):
 #
 ##################################
 
-def SegmentCustomer(inputFile='',indf=-1,loadPath='',timeStamp=-1):
+def SegmentCustomer(inputFile='',indf=-1,loadPath='',timeStamp=-1,loadPath1='params39',loadPath2='params52'):
 
     if inputFile!='':
         df=pd.read_csv(inputFile)
     else:
         df=indf;
 
-    if 'timestamp' not in dfinputs.columns:
-        df['timestamp']=dfinputs.transaction_date.apply(lambda tmp:arrow.get(tmp).timestamp/(60))
+    if 'timestamp' not in df.columns:
+        df['timestamp']=df.transaction_date.apply(lambda tmp:arrow.get(tmp).timestamp/(60))
 
     dff,dffoh=ExtractNumericalFeatures(df,timeStamp=timeStamp),ExtractCategoricalFeatures(df)
     
-    c1=MakePrediction(dff,dffoh,'params39',probThres=.5) # Most likely
-    c2=MakePrediction(dff,dffoh,'params52',probThres=52) # 2nd Most likely
+    c1=MakePrediction(dff,dffoh,loadPath1,probThres=.5) # Most likely
+    c2=MakePrediction(dff,dffoh,loadPath2,probThres=.5) # 2nd Most likely
     c2[c1.astype(bool)]=0.
     
     res=np.zeros((len(c1),1))
