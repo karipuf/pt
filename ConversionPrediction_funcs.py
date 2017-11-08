@@ -59,6 +59,19 @@ def TwoLargest(invec):
         return second,largest
     except:
         return 1.,0.
+
+def Df2ParamsDict(paramsdf):
+    '''
+    Converts df containing parameters from evaluateconversionprediction runs
+    to param dicts
+    for e.g.:
+    
+    df=ProcRunfile('home_run2.txt')
+    paramsdf=df.sort_values('precision',ascending=False).head(1)
+    '''
+
+    p2d=lambda x : {tmp[0]:tmp[1][0] for tmp in x.to_dict('list').items()}
+    return [ p2d(paramsdf.iloc[tmp:tmp+1,5:]) for tmp in range(paramsdf.shape[0]) ]
     
 ####################
 #
@@ -381,11 +394,11 @@ def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1,timeStamp=-1,tra
 
     # Generating one hot encoding matrices
     # Have to unify the indices so that the three can be concatenated
-    brandOHenc=pd.DataFrame(OneHotEncoder().fit_transform(brandLabel.reshape((-1,1))).toarray())
+    brandOHenc=pd.DataFrame(OneHotEncoder(n_values=len(brands)).fit_transform(brandLabel.reshape((-1,1))).toarray())
     brandOHenc.columns=['brand'+str(tmp) for tmp in range(len(brandOHenc.columns))]
     brandOHenc.index=dfinputsonehot.index
     
-    catOHenc=pd.DataFrame(OneHotEncoder().fit_transform(catLabel.reshape((-1,1))).toarray())
+    catOHenc=pd.DataFrame(OneHotEncoder(n_values=len(categories)).fit_transform(catLabel.reshape((-1,1))).toarray())
     catOHenc.columns=['categ'+str(tmp) for tmp in range(len(catOHenc.columns))]
     catOHenc.index=dfinputsonehot.index
     
@@ -456,12 +469,12 @@ def ExtractNumericalFeatures(dfinputs,verbose=True,timeStamp=-1,trainingSet=Fals
 
 
 
-###########################################################################
+#########################################################################################
 #
-# For regenerating the original features from the sales_order_line dataset
+# For regenerating the original features from the sales_order_line_timestamped dataset
 # Useful for testing the extraction functions!
 #
-###########################################################################
+#########################################################################################
 
 def regenerateNumericalFeatures(nDays=30,nDaysFeats=75,returnOutputs=False):
     # Generates the data that is stored
@@ -520,7 +533,7 @@ def SegmentCustomer(inputFile='',indf=-1,loadPath='',timeStamp=-1,loadPath1='par
     if 'timestamp' not in df.columns:
         df['timestamp']=df.transaction_date.apply(lambda tmp:arrow.get(tmp).timestamp/(60))
 
-    dff,dffoh=ExtractNumericalFeatures(df,timeStamp=timeStamp),ExtractCategoricalFeatures(df)
+    dff,dffoh=ExtractNumericalFeatures(df,timeStamp=timeStamp),ExtractCategoricalFeatures(df,timeStamp=timeStamp)
     
     c1=MakePrediction(dff,dffoh,loadPath1,probThres=.5) # Most likely
     c2=MakePrediction(dff,dffoh,loadPath2,probThres=.5) # 2nd Most likely
