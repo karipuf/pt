@@ -369,6 +369,12 @@ def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1,timeStamp=-1,tra
         dfinputs['timestamp']=dfinputs.transaction_date.apply(lambda tmp:arrow.get(tmp).timestamp/(60))
     # Creating the initial dataframe   
 
+    
+    if type(brands)==int:
+        brands,foo=pickle.load(open("brandscats.pkl",'rb'))
+    if type(categories)==int:
+        foo,categories=pickle.load(open("brandscats.pkl",'rb'))
+    
     # The "current" point in time
     # If not provided, then use present moment (computer time)
     # If training then assume we are using the full dataset (i.e. for training)
@@ -378,12 +384,11 @@ def ExtractCategoricalFeatures(dfinputs,brands=-1,categories=-1,timeStamp=-1,tra
         if timeStamp==-1: timeStamp=arrow.get().timestamp/60.+10
     featsWind=nDaysFeats*24*60
     dfinputs=dfinputs[dfinputs.timestamp>timeStamp-featsWind]
-    
-    if type(brands)==int:
-        brands,foo=pickle.load(open("brandscats.pkl",'rb'))
-    if type(categories)==int:
-        foo,categories=pickle.load(open("brandscats.pkl",'rb'))
 
+    # Only recognized brands and inputs
+    dfinputs=dfinputs[dfinputs.brand.isin(brands)]
+    dfinputs=dfinputs[dfinputs.category.isin(categories)]
+    
     brandEnc=LabelEncoder().fit(brands)
     catEnc=LabelEncoder().fit(categories)
 
