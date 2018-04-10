@@ -19,7 +19,7 @@ salesdata_date2days=lambda datestr: date2days(datestr[5:7],datestr[8:10])
 
 # Loading in data and adding day info
 df=pd.read_csv("gadata.csv",dtype={'date':str})
-df2=pd.read_csv("/home/wlwoon/Dropbox/chicken_work/impersuasion_stuff/withSalesData/sales_order_line_timestamped.csv")
+df2=pd.read_csv("../sales_order_line_timestamped.csv")
 df['day']=df.date.apply(gadata_date2days)
 df2['day']=df2.transaction_date.apply(salesdata_date2days)
 
