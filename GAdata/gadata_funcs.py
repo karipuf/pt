@@ -46,7 +46,7 @@ def getFeatures(featThresholds=150,featureWindow=30,labelWindow=20,nanReplace=-1
         targetdf=df2[df2.day.isin(labelRange)]
         targetdf=targetdf[targetdf.customer_id.isin(set(featdf.user_id))]
     
-        featdf.replace(np.nan,nanReplace,inplace=True)
+        featdf=featdf.replace(np.nan,nanReplace)
         
         dg=featdf.groupby('user_id')
     
