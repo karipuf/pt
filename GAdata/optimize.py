@@ -17,14 +17,14 @@ from sklearn.linear_model import LogisticRegression
 ################################
 
 # Parameters
-nAugment=2
-pAugment=.65
-labelWindow=30
-featureWindow=30
+#nAugment=2
+#pAugment=.65
+#labelWindow=30
+#featureWindow=30
 labelThreshold=[80,150]
-nHidden=10
-featureList=['hits','maxPurchase','meanPurchase']
 numParams=50
+
+featureList=['hits','maxPurchase','meanPurchase']
 numCV=12
 pSampler=ParameterSampler({'learningRate':pl.linspace(.0001,.01,20),'featureWindow':list(range(15,40)),
                            'propAugment':[.3,.5,.8],'nHidden':list(range(5,50)),'labelWindow':list(range(25,40))},n_iter=numParams)
@@ -38,7 +38,6 @@ c=count(1)
 
 for params in pSampler:
     
-    print("Evaluating parameter set #"+str(next(c)))
     paramsVec=[params[tmp] for tmp in paramList]
     learningRate,featureWindow,labelWindow,propAugment,nHidden=paramsVec 
     
@@ -46,13 +45,31 @@ for params in pSampler:
     xdf,ydf=getFeatures(labelThreshold,labelWindow=labelWindow,featureWindow=featureWindow)
     x=xdf[featureList].values
     y=ydf.values.reshape((-1,))
+    
+    n1s=pl.sum(y) # Number of positive samples
+    n0s=pl.sum(1-y) # Number of negative samples
+    n=(propAugment*n0s)-n1s # Number of extra positive samples that we have to create
+    if n>0:
+        if n<n1s:
+            nAugment=1
+            pAugment=n/n1s
+        else:
+            if n<(2*n1s):
+                nAugment=2
+                pAugment=n/(2*n1s)
+            else:
+                nAugment=3
+                pAugment=n/(3*n1s)
 
+    print("Evaluating parameter set #"+str(next(c))+", propAugment,nAugment and pAugment is "+str((propAugment,nAugment,pAugment)))
+    
     scores=[]
     stdout.write("Cross validation round: ")
+    stdout.flush()
     for count1 in range(numCV):
         
         stdout.write("#"+str(count1)+",")
-        rf=MLPClassifier(hidden_layer_sizes=(nHidden,))
+        rf=MLPClassifier(hidden_layer_sizes=(nHidden,),learning_rate_init=learningRate)
  
         # Creating test,train split
         xtrain,xtest,ytrain,ytest=train_test_split(x,y,test_size=.05)
@@ -60,8 +77,15 @@ for params in pSampler:
         # Augmenting minority class
         for count2 in range(nAugment):
             minoritySamp=np.logical_and(ytrain==1,np.random.rand(len(ytrain))<pAugment)
-            xtrain=np.concatenate((xtrain,xtrain[minoritySamp]),axis=0)
-            ytrain=np.concatenate((ytrain,np.ones(np.sum(minoritySamp))),axis=0)
+            try:
+                xAug=np.concatenate((xAug,xtrain[minoritySamp]),axis=0)
+                yAug=np.concatenate((yAug,np.ones(np.sum(minoritySamp))),axis=0)
+            except NameError:
+                xAug=xtrain[minoritySamp]
+                yAug=np.ones(np.sum(minoritySamp))
+                
+        xtrain=np.concatenate((xtrain,xAug),axis=0)
+        ytrain=np.concatenate((ytrain,yAug),axis=0)
     
         rf.fit(xtrain,ytrain)
         scores.append([accuracy_score(ytest,rf.predict(xtest)),precision_score(ytest,rf.predict(xtest)),recall_score(ytest,rf.predict(xtest))])
