@@ -60,6 +60,9 @@ for params in pSampler:
             else:
                 nAugment=3
                 pAugment=n/(3*n1s)
+    else:
+        nAugment=0
+        pAugment=0
 
     print("Evaluating parameter set #"+str(next(c))+", propAugment,nAugment and pAugment is "+str((propAugment,nAugment,pAugment)))
     
