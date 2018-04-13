@@ -1,3 +1,19 @@
+from argparse import ArgumentParser
+ap=ArgumentParser()
+ap.add_argument('-n',help='Number of params (default=50)')
+ap.add_argument('-o',help='Output file for results (default optresult.txt')
+parsed=ap.parse_args()
+
+if parsed.o==None:
+    resFile='optresult.txt'
+else:
+    resFile=parsed.o
+
+if parsed.n==None:
+    numParams=50
+else:
+    numParams=int(parsed.n)
+    
 import gadata_funcs,pdb,re
 import pandas as pd
 import pylab as pl
@@ -22,16 +38,15 @@ from sklearn.linear_model import LogisticRegression
 #labelWindow=30
 #featureWindow=30
 labelThreshold=[80,150]
-numParams=50
 
 featureList=['hits','maxPurchase','meanPurchase']
 numCV=12
 pSampler=ParameterSampler({'learningRate':pl.linspace(.0001,.01,20),'featureWindow':list(range(15,40)),
-                           'propAugment':[.3,.5,.8],'nHidden':list(range(5,50)),'labelWindow':list(range(25,40))},n_iter=numParams)
+                           'propAugment':[.6,.7,.8,.9,1.0],'nHidden':list(range(5,50)),'labelWindow':list(range(25,40))},n_iter=numParams)
 paramList=['learningRate','featureWindow','labelWindow','propAugment','nHidden']
 
 # Parameter evaluations
-outfile=open("optresults.txt","a+")
+outfile=open(resFile,"a+")
 outfile.write(','.join(paramList)+',Accuracy,Precision,Recall\n')
 outfile.flush()
 c=count(1)
@@ -78,18 +93,21 @@ for params in pSampler:
         xtrain,xtest,ytrain,ytest=train_test_split(x,y,test_size=.05)
     
         # Augmenting minority class
+        xAug=0
         for count2 in range(nAugment):
             minoritySamp=np.logical_and(ytrain==1,np.random.rand(len(ytrain))<pAugment)
             try:
                 xAug=np.concatenate((xAug,xtrain[minoritySamp]),axis=0)
                 yAug=np.concatenate((yAug,np.ones(np.sum(minoritySamp))),axis=0)
-            except NameError:
+            except ValueError:
                 xAug=xtrain[minoritySamp]
                 yAug=np.ones(np.sum(minoritySamp))
-                
-        xtrain=np.concatenate((xtrain,xAug),axis=0)
-        ytrain=np.concatenate((ytrain,yAug),axis=0)
-    
+
+        if nAugment>0:
+            xtrain=np.concatenate((xtrain,xAug),axis=0)
+            ytrain=np.concatenate((ytrain,yAug),axis=0)
+        
+            
         rf.fit(xtrain,ytrain)
         scores.append([accuracy_score(ytest,rf.predict(xtest)),precision_score(ytest,rf.predict(xtest)),recall_score(ytest,rf.predict(xtest))])
 
