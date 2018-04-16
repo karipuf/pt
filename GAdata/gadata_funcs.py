@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from collections import Iterable
 from os.path import join
+from sklearn.externals import joblib
 
 # Utility stuff
 ##################
@@ -84,6 +85,7 @@ def ExtractFeaturesGA(featdf,featThreshold=-1,nanReplace=-10,featureWindow=26):
     xdf['region']=dg.region.first()
     xdf['maxSessions']=dg.sessions.max()
     xdf['meanSessions']=dg.sessions.mean()
+    xdf['meanSessionsToTransaction']=dg['ga:sessionsToTransaction'].mean()
 
     return xdf
 
@@ -117,3 +119,43 @@ def GetTrainingData(featThresholds=[80,150],featureWindow=26,labelWindow=38,nanR
             ydf=ydf_
         
     return xdf,ydf
+
+
+def ConversionPrediction(inFile,dateStr='',modelFile='currentModel.jl'):
+    '''Perform conversion prediction using GA data
+
+    Parameters:
+
+    - inFile is the name of the file containing the GA data for which
+     predictions are to be generated Note: it should be structured the
+     same as the gadata.csv file.  Alternatively, it can be a
+     dataframe, but the 'date' field needs to be a string
+
+    - dateStr is a string formatted as 'yyyymmdd'. if '' is provided
+      (the default), then the latest date in the file is provided
+
+    - modelfile is a joblib dump file containing a dict with two keys:
+     'model' for the model, and 'features' with the list of features
+     used
+
+    '''
+    
+    # Prepping data and loading model
+    if type(inFile)==str:
+        indf=pd.read_csv(inFile,dtype={'date':str})
+    else:
+        indf=inFile
+
+    if dateStr=='':
+        featThreshold=-1
+    else:
+        featThreshold=gadata_date2days(dateStr)
+        
+    mod=joblib.load(modelFile)
+    xdf=ExtractFeaturesGA(indf,featThreshold,featureWindow=mod['featureWindow'])
+    x=xdf[mod['features']].values
+    
+    # Generating predictions
+    hits=mod['model'].predict(x).astype(bool)
+    return xdf.index[hits].values.tolist()
+    
