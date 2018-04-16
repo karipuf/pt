@@ -20,7 +20,7 @@ import pylab as pl
 import numpy as np
 from itertools import count
 from sys import stdout
-from gadata_funcs import date2days,gadata_date2days,salesdata_date2days,getFeatures
+from gadata_funcs import date2days,gadata_date2days,salesdata_date2days,getTrainingData
 from importlib import reload
 from sklearn.ensemble import RandomForestClassifier,GradientBoostingClassifier,BaggingClassifier,VotingClassifier
 from sklearn.model_selection import train_test_split,ParameterSampler
@@ -57,7 +57,7 @@ for params in pSampler:
     learningRate,featureWindow,labelWindow,propAugment,nHidden=paramsVec 
     
     # Loading data
-    xdf,ydf=getFeatures(labelThreshold,labelWindow=labelWindow,featureWindow=featureWindow)
+    xdf,ydf=getTrainingData(labelThreshold,labelWindow=labelWindow,featureWindow=featureWindow)
     x=xdf[featureList].values
     y=ydf.values.reshape((-1,))
     

@@ -30,7 +30,7 @@ df2['day']=df2.transaction_date.apply(salesdata_date2days)
 #############
 
 # Feature extraction
-def getFeatures(featThresholds=150,featureWindow=30,labelWindow=20,nanReplace=-10):
+def getTrainingData(featThresholds=150,featureWindow=30,labelWindow=20,nanReplace=-10):
 
     if not isinstance(featThresholds,Iterable):
         featThresholds=[featThresholds]
